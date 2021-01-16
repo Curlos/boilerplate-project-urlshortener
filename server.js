@@ -2,11 +2,13 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const app = express();
-var bodyParser = require('body-parser');
+const bodyParser = require('body-parser');
 // Basic Configuration
 const port = process.env.PORT || 3000;
+const {v4: uuid} = require("uuid")
 
 const mongoose = require('mongoose');
+const validUrl = require('valid-url');
 mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true });
 const { Schema } = mongoose;
 
@@ -20,36 +22,45 @@ app.use(bodyParser.urlencoded({
   extended: true
 }));
 
-let urls = {};
+const urlSchema = new Schema({
+  original_url: String,
+  short_url: String
+})
+
+let Url = mongoose.model('Url', urlSchema);
+
 
 app.get('/', function(req, res) {
   res.sendFile(process.cwd() + '/views/index.html');
 });
 
 // Your first API endpoint
-app.get('/api/shorturl/:id', function(req, res) {
-  /*dns.lookup('fakewewe.com', (err, address, family) => {
-    console.log({err, address, family})
-  }); */
+app.get('/api/shorturl/:id', async function(req, res) {
   let shortUrl = parseFloat(req.params.id);
-  console.log(urls)
-  console.log(req.params)
-  console.log(Object.values(urls).indexOf(shortUrl))
+  let allUrls = await Url.find({});
+  let website = await Url.findOne({short_url: req.params.id})
 
-  if(Object.values(urls).indexOf(shortUrl) > -1) {
-    let original_url = Object.keys(urls).find(key => urls[key] === shortUrl);
+  if(website != null) {
+    let original_url = website['original_url']
     res.redirect(original_url);
   } else {
     res.json({error: 'invalid url'})
   }
 });
 
-app.post('/api/shorturl/new', (req, res) => {
-  urls[req.body.url] = Object.keys(urls).length + 1;
-  res.json({
-    original_url: req.body.url,
-    short_url: 1
-  })
+app.post('/api/shorturl/new', async (req, res) => {
+  let validUrlCheck = validUrl.isHttpUri(req.body.url) || validUrl.isHttpsUri(req.body.url)
+  if(validUrlCheck != undefined) {
+    const url = new Url({
+      original_url: req.body.url,
+      short_url: uuid()
+    })
+    url.save((err, data) => {
+      res.json(data);
+    })
+  } else {
+    res.json({error: 'Invalid URL'});
+  }
 })
 
 app.listen(port, function() {
